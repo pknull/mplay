@@ -85,7 +85,6 @@ pub fn render_layout(
                                 Constraint::Length(height)
                             }
                         }
-                        WidgetConfig::Spectrum(_) => Constraint::Length(0), // Disabled
                         WidgetConfig::Empty(c) => {
                             if direction == Direction::Vertical {
                                 // If no height specified, use flexible space (for centering)
@@ -169,8 +168,7 @@ fn render_widget(
         WidgetConfig::Progress(cfg) => render_progress(frame, area, cfg, state),
         WidgetConfig::Volume(cfg) => render_volume(frame, area, cfg, state),
         WidgetConfig::Button(cfg) => render_button(frame, area, cfg, state),
-        WidgetConfig::CoverArt(_) => render_cover_art(frame, area, state, cover_loader),
-        WidgetConfig::Spectrum(_) => {} // Disabled
+        WidgetConfig::CoverArt(cfg) => render_cover_art(frame, area, cfg, state, cover_loader),
         WidgetConfig::Empty(_) => {}
     }
 }
@@ -317,7 +315,7 @@ fn render_button(
     frame.render_widget(paragraph, area);
 }
 
-fn render_cover_art(frame: &mut Frame, area: Rect, state: &PlayerState, cover_loader: &mut CoverArtLoader) {
+fn render_cover_art(frame: &mut Frame, area: Rect, config: &crate::config::CoverArtConfig, state: &PlayerState, cover_loader: &mut CoverArtLoader) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -328,7 +326,7 @@ fn render_cover_art(frame: &mut Frame, area: Rect, state: &PlayerState, cover_lo
 
         // Render with colored half-blocks (like fum)
         if let Some(cover) = cover_loader.get(url) {
-            let lines = render_image_halfblocks(&cover.image, area.width as usize, area.height as usize);
+            let lines = render_image_halfblocks(&cover.image, area.width as usize, area.height as usize, config.true_color);
             if !lines.is_empty() {
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, area);
@@ -352,8 +350,49 @@ fn render_cover_art(frame: &mut Frame, area: Rect, state: &PlayerState, cover_lo
     frame.render_widget(paragraph, area);
 }
 
+/// Map RGB to the nearest of the 16 standard terminal colors.
+fn rgb_to_ansi16(r: u8, g: u8, b: u8) -> Color {
+    // Standard 16-color ANSI palette (approximate RGB values)
+    const PALETTE: [(u8, u8, u8, Color); 16] = [
+        (0, 0, 0, Color::Black),
+        (128, 0, 0, Color::Red),
+        (0, 128, 0, Color::Green),
+        (128, 128, 0, Color::Yellow),
+        (0, 0, 128, Color::Blue),
+        (128, 0, 128, Color::Magenta),
+        (0, 128, 128, Color::Cyan),
+        (192, 192, 192, Color::Gray),
+        (128, 128, 128, Color::DarkGray),
+        (255, 0, 0, Color::LightRed),
+        (0, 255, 0, Color::LightGreen),
+        (255, 255, 0, Color::LightYellow),
+        (0, 0, 255, Color::LightBlue),
+        (255, 0, 255, Color::LightMagenta),
+        (0, 255, 255, Color::LightCyan),
+        (255, 255, 255, Color::White),
+    ];
+
+    let mut best_color = Color::Black;
+    let mut best_dist = u32::MAX;
+
+    for (pr, pg, pb, color) in PALETTE {
+        // Euclidean distance in RGB space
+        let dr = (r as i32 - pr as i32).pow(2) as u32;
+        let dg = (g as i32 - pg as i32).pow(2) as u32;
+        let db = (b as i32 - pb as i32).pow(2) as u32;
+        let dist = dr + dg + db;
+
+        if dist < best_dist {
+            best_dist = dist;
+            best_color = color;
+        }
+    }
+
+    best_color
+}
+
 /// Render image using colored half-block characters (▄) like fum
-fn render_image_halfblocks(img: &image::DynamicImage, target_width: usize, target_height: usize) -> Vec<Line<'static>> {
+fn render_image_halfblocks(img: &image::DynamicImage, target_width: usize, target_height: usize, true_color: bool) -> Vec<Line<'static>> {
     use ratatui::text::Span;
     use image::GenericImageView;
 
@@ -397,11 +436,21 @@ fn render_image_halfblocks(img: &image::DynamicImage, target_width: usize, targe
             };
 
             // ▄ = lower half block: foreground = bottom pixel, background = top pixel
+            let (fg, bg) = if true_color {
+                (
+                    Color::Rgb(bot_pixel.0, bot_pixel.1, bot_pixel.2),
+                    Color::Rgb(top_pixel.0, top_pixel.1, top_pixel.2),
+                )
+            } else {
+                (
+                    rgb_to_ansi16(bot_pixel.0, bot_pixel.1, bot_pixel.2),
+                    rgb_to_ansi16(top_pixel.0, top_pixel.1, top_pixel.2),
+                )
+            };
+
             spans.push(Span::styled(
                 "▄",
-                Style::default()
-                    .fg(Color::Rgb(bot_pixel.0, bot_pixel.1, bot_pixel.2))
-                    .bg(Color::Rgb(top_pixel.0, top_pixel.1, top_pixel.2)),
+                Style::default().fg(fg).bg(bg),
             ));
         }
 

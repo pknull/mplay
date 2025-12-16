@@ -135,7 +135,6 @@ pub enum WidgetConfig {
     Volume(VolumeConfig),
     Button(ButtonConfig),
     CoverArt(CoverArtConfig),
-    Spectrum(SpectrumConfig),
     Empty(EmptyConfig),
 }
 
@@ -232,32 +231,23 @@ pub enum ButtonAction {
 }
 
 /// Cover art configuration
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CoverArtConfig {
     pub width: Option<u16>,
     pub height: Option<u16>,
     pub use_ascii: bool,
+    /// Use 24-bit true color for cover art. When false, uses 16 standard terminal colors.
+    pub true_color: bool,
 }
 
-/// Spectrum/visualizer widget configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SpectrumConfig {
-    pub bars: u16,
-    pub bar_char: char,
-    pub style: StyleConfig,
-    /// Use gradient colors (green->yellow->red)
-    pub gradient: bool,
-}
-
-impl Default for SpectrumConfig {
+impl Default for CoverArtConfig {
     fn default() -> Self {
         Self {
-            bars: 16,
-            bar_char: '█',
-            style: StyleConfig::default(),
-            gradient: true,
+            width: None,
+            height: None,
+            use_ascii: false,
+            true_color: false,
         }
     }
 }
@@ -339,8 +329,6 @@ fn default_widgets() -> HashMap<String, WidgetConfig> {
     widgets.insert("volume".into(), WidgetConfig::Volume(VolumeConfig::default()));
 
     widgets.insert("cover".into(), WidgetConfig::CoverArt(CoverArtConfig::default()));
-
-    widgets.insert("spectrum".into(), WidgetConfig::Spectrum(SpectrumConfig::default()));
 
     // Flexible spacers for vertical centering
     widgets.insert("spacer_top".into(), WidgetConfig::Empty(EmptyConfig::default()));
